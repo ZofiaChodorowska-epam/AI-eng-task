@@ -9,7 +9,7 @@ from langgraph.graph import StateGraph, END
 
 from models import AgentState
 from vector_store import get_vectorstore
-from sql_db import get_available_spots, get_working_hours, create_reservation, check_availability
+from sql_db import get_available_spots, get_working_hours, create_reservation, check_availability, get_reservation_status
 
 # Load environment variables if any
 from dotenv import load_dotenv
@@ -65,7 +65,8 @@ def analyze_intent(state: AgentState):
     1. Answer General Question (RAG)
     2. Answer Dynamic Question (SQL - availability, hours)
     3. Start/Continue Reservation
-    4. General Conversation (Chitchat/Personal info)
+    4. Check Reservation Status (NEW)
+    5. General Conversation (Chitchat/Personal info)
     """
     messages = state["messages"]
     last_message = messages[-1]
@@ -75,11 +76,12 @@ def analyze_intent(state: AgentState):
         last_bot_msg = messages[-2].content.lower()
         if "provide your name" in last_bot_msg or "proceed with reservation" in last_bot_msg:
             return "reservation_flow"
-    
+            
     classification_prompt = ChatPromptTemplate.from_messages([
         ("system", "You are a router. Classify the user input into one of these categories: "
                    "'general_info' (for facts about the parking), "
                    "'check_availability', "
+                   "'check_status' (for checking if a reservation is approved), "
                    "'reservation', "
                    "'conversation' (for greetings, personal info sharing, chitchat)."),
         ("user", "{input}")
@@ -92,15 +94,20 @@ def analyze_intent(state: AgentState):
     except Exception:
         intent = "general_info"
         
-    # Heuristic: Check INTENT usually, but also safeguard specific keywords in INPUT
+    # Heuristic safeguards
     user_text = last_message.content.lower()
     
-    if ("availability" in intent or "check_availability" in intent or 
+    if "status" in user_text or "approved" in user_text or "confirmed" in user_text:
+        return "check_status"
+        
+    # Check reservation BEFORE dynamic info (because "book a spot" contains "spot")
+    elif "reservation" in intent or "book" in intent or "reserve" in user_text:
+        return "reservation_flow"
+        
+    elif ("availability" in intent or "check_availability" in intent or 
         "hours" in user_text or "open" in user_text or "close" in user_text or
         "cost" in user_text or "price" in user_text or "rate" in user_text or "spot" in user_text):
         return "dynamic_info"
-    elif "reservation" in intent or "book" in intent:
-        return "reservation_flow"
     elif "conversation" in intent or "chat" in intent:
         return "conversation_flow"
     else:
@@ -224,13 +231,28 @@ def reservation_node(state: AgentState):
         
     # If we have both
     # Create reservation (Mock)
-    res_status = create_reservation(user_info["name"], user_info["car_number"], "Now", "Later")
+    # status will be returned as message e.g. "Reservation request received..."
+    res_msg = create_reservation(user_info["name"], user_info["car_number"], "Now", "Later")
     
     return {
-        "messages": [AIMessage(content=f"Reservation confirmed for {user_info['name']} (Plate: {user_info['car_number']}). Status: {res_status}")],
+        "messages": [AIMessage(content=f"Request submitted for {user_info['name']} (Plate: {user_info['car_number']}).\n{res_msg}")],
         "user_info": user_info,
-        "reservation_details": {"status": "confirmed"}
+        "reservation_details": {"status": "pending"}
     }
+
+def check_status_node(state: AgentState):
+    """Check status of reservation using stored user info"""
+    user_info = state.get("user_info", {})
+    if not user_info.get("name") or not user_info.get("car_number"):
+        return {"messages": [AIMessage(content="I need your valid Name and Car Number to check the status.")]}
+    
+    status = get_reservation_status(user_info["name"], user_info["car_number"])
+    if status is None:
+        msg = "I couldn't find any reservation for you."
+    else:
+        msg = f"Your reservation status is: {status.upper()}"
+        
+    return {"messages": [AIMessage(content=msg)]}
 
 def router_node(state: AgentState):
     intent = analyze_intent(state)
@@ -244,6 +266,7 @@ workflow.add_node("rag_node", rag_node)
 workflow.add_node("dynamic_info_node", dynamic_info_node)
 workflow.add_node("reservation_node", reservation_node)
 workflow.add_node("conversation_node", conversation_node)
+workflow.add_node("check_status_node", check_status_node)
 
 workflow.set_conditional_entry_point(
     router_node,
@@ -252,6 +275,7 @@ workflow.set_conditional_entry_point(
         "dynamic_info": "dynamic_info_node",
         "reservation_flow": "reservation_node",
         "conversation_flow": "conversation_node",
+        "check_status": "check_status_node",
          "general_info": "rag_node",
          "other": "rag_node"
     }
@@ -261,5 +285,6 @@ workflow.add_edge("rag_node", END)
 workflow.add_edge("dynamic_info_node", END)
 workflow.add_edge("reservation_node", END)
 workflow.add_edge("conversation_node", END)
+workflow.add_edge("check_status_node", END)
 
 app = workflow.compile()
