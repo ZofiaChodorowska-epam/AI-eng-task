@@ -1,0 +1,30 @@
+[
+    {
+        "question": "What are the working hours?",
+        "expected_keywords": [
+            "06:00",
+            "12:00"
+        ]
+    },
+    {
+        "question": "Where is the parking located?",
+        "expected_keywords": [
+            "123 Main Street"
+        ]
+    },
+    {
+        "question": "How much does it cost?",
+        "expected_keywords": [
+            "5.0",
+            "price",
+            "5"
+        ]
+    },
+    {
+        "question": "Is there support available?",
+        "expected_keywords": [
+            "555-0199",
+            "support@cityparking.com"
+        ]
+    }
+]
