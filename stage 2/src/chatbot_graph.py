@@ -61,61 +61,57 @@ def contextualize_query(state: AgentState):
 
 def analyze_intent(state: AgentState):
     """
-    Decide the next node.
+    Decide whether to:
+    1. Answer General Question (RAG)
+    2. Answer Dynamic Question (SQL - availability, hours)
+    3. Start/Continue Reservation
+    4. Check Reservation Status (NEW)
+    5. General Conversation (Chitchat/Personal info)
     """
     messages = state["messages"]
     last_message = messages[-1]
-    user_text = last_message.content.lower()
     
-    # 1. Check for explicit exit from reservation
-    if any(k in user_text for k in ["no", "cancel", "stop", "nevermind"]):
-        return "conversation_flow"
-
-    # 2. If we are in the middle of a reservation (using dialog_stage)
-    if state.get("dialog_stage") == "reservation":
-        # Unless they ask for status explicitly
-        if any(k in user_text for k in ["status", "check my reservation", "is it approved"]):
-            return "check_status"
-        return "reservation_flow"
-
-    # 3. Heuristic: If last bot message asked for info, we are likely trying to fill slots
+    # 1. Heuristic: If last bot message asked for info, we are likely in that flow
     if len(messages) > 1 and isinstance(messages[-2], AIMessage):
         last_bot_msg = messages[-2].content.lower()
-        if "provide" in last_bot_msg or "proceed with reservation" in last_bot_msg:
+        if "provide your name" in last_bot_msg or "proceed with reservation" in last_bot_msg:
             return "reservation_flow"
-
-    # 4. LLM Classification
+            
     classification_prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a router. Classify the user input into: "
-                   "'check_status', 'reservation', 'availability', 'conversation', 'rag'."),
+        ("system", "You are a router. Classify the user input into one of these categories: "
+                   "'general_info' (for facts about the parking), "
+                   "'check_availability', "
+                   "'check_status' (for checking if a reservation is approved), "
+                   "'reservation', "
+                   "'conversation' (for greetings, personal info sharing, chitchat)."),
         ("user", "{input}")
     ])
+    
+    chain = classification_prompt | llm
     try:
-        response = llm.invoke(classification_prompt.format_messages(input=user_text))
+        response = chain.invoke({"input": last_message.content})
         intent = response.content.lower().strip()
     except Exception:
-        intent = "rag"
-
-    # 5. Keyword Overrides
-    if any(k in user_text for k in ["status", "approved", "confirmed", "how's my reservation"]):
+        intent = "general_info"
+        
+    # Heuristic safeguards
+    user_text = last_message.content.lower()
+    
+    if "status" in user_text or "approved" in user_text or "confirmed" in user_text:
         return "check_status"
         
-    if any(k in user_text for k in ["reserve", "book", "parking place", "parking spot", "reservation"]):
+    # Check reservation BEFORE dynamic info (because "book a spot" contains "spot")
+    elif "reservation" in intent or "book" in intent or "reserve" in user_text:
         return "reservation_flow"
         
-    if "reservation" in intent:
-        return "reservation_flow"
-        
-    if any(k in user_text for k in ["hours", "open", "close", "price", "cost", "rate", "available"]):
+    elif ("availability" in intent or "check_availability" in intent or 
+        "hours" in user_text or "open" in user_text or "close" in user_text or
+        "cost" in user_text or "price" in user_text or "rate" in user_text or "spot" in user_text):
         return "dynamic_info"
-        
-    if "availability" in intent:
-        return "dynamic_info"
-        
-    if "conversation" in intent or any(k in user_text for k in ["hi", "hello", "hey", "name is"]):
+    elif "conversation" in intent or "chat" in intent:
         return "conversation_flow"
-
-    return "rag_flow"
+    else:
+        return "rag_flow"
 
 # Nodes
 
@@ -133,18 +129,15 @@ def conversation_node(state: AgentState):
     messages = state["messages"]
     user_info = state.get("user_info", {})
     
-    # Robust extraction for Name from general conversation
+    # Simple extraction for "My name is..." if not in reservation flow
     last_content = messages[-1].content
-    if not user_info.get("name"):
-        extraction_prompt = ChatPromptTemplate.from_messages([
-            ("system", "Extract the user's name if they introduced themselves. Return JUST the name or 'null'."),
-            ("human", "{input}")
-        ])
-        res = (extraction_prompt | llm).invoke({"input": last_content})
-        extracted_name = res.content.strip()
-        if extracted_name.lower() != "null" and len(extracted_name) < 50:
-            user_info["name"] = extracted_name
-    
+    if "my name is" in last_content.lower():
+        # Quick fallback extraction if not caught elsewhere
+        import re
+        match = re.search(r"my name is ([a-zA-Z]+)", last_content, re.IGNORECASE)
+        if match:
+            user_info["name"] = match.group(1)
+            
     # System prompt with user context
     context_str = ""
     if user_info.get("name"):
@@ -164,8 +157,7 @@ def conversation_node(state: AgentState):
     
     return {
         "messages": [response],
-        "user_info": user_info,
-        "dialog_stage": "general"
+        "user_info": user_info
     }
 
 def rag_node(state: AgentState):
@@ -175,14 +167,8 @@ def rag_node(state: AgentState):
     context_docs = retrieve_docs_list(query)
     context = "\n\n".join([d.page_content for d in context_docs])
     
-    # Generate answer with safety instructions
-    system_instr = (
-        "You are a helpful parking assistant. Answer based on context. "
-        "IMPORTANT: Do not confirm reservations here. If the user is asking about their reservation status, "
-        "tell them to check their status. Do not mention names like 'John' unless they are in the context. "
-        "The context is about parking rules and facts."
-    )
-    prompt = f"{system_instr}\n\nContext:\n{context}\n\nQuery: {query}"
+    # Generate answer
+    prompt = f"Answer the user query based on context:\n\n{context}\n\nQuery: {query}"
     response = llm.invoke(prompt)
     return {
         "messages": [response],
@@ -199,77 +185,59 @@ def reservation_node(state: AgentState):
     last_msg_content = messages[-1].content
     
     # Only run extraction if we don't have everything yet
-    # We want name, car_number, and a time/duration.
-    # Simple heuristic: if we have some but not all, try to extract from latest.
-    
-    extraction_prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are an extraction algorithm. Extract 'name', 'car_number', 'start_time', and 'end_time' from the input.\n"
-                   "Return ONLY a JSON object with keys: 'name', 'car_number', 'start_time', 'end_time'.\n"
-                   "Values should be null if not found.\n"
-                   "CRITICAL: 'car_number' can be short alphanumeric strings like 'gur35' or '55y3'. Extract them exactly.\n"
-                   "Handle time ranges (e.g. '8-16') by splitting into start and end.\n"
-                   "Example: Input 'tomorrow 8-16' -> {{\"start_time\": \"tomorrow 8\", \"end_time\": \"tomorrow 16\", ...}}\n"),
-        ("user", "{input}")
-    ])
-    
-    chain = extraction_prompt | llm
-    try:
-        extraction_response = chain.invoke({"input": last_msg_content})
-        content = extraction_response.content.strip()
+    if not user_info.get("name") or not user_info.get("car_number"):
+        extraction_prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are an extraction algorithm. Extract 'name' and 'car_number' from the input.\n"
+                       "Return ONLY a JSON object with keys 'name' and 'car_number'.\n"
+                       "If a value is missing or not provided, set it to null.\n"
+                       "Example: {{\"name\": \"Alice\", \"car_number\": \"ABC-123\"}}\n"
+                       "Example: {{\"name\": \"Bob\", \"car_number\": null}}"),
+            ("user", "{input}")
+        ])
         
-        # Remove markdown code blocks if present
-        if content.startswith("```json"):
-            content = content[7:]
-        if content.endswith("```"):
-            content = content[:-3]
-        content = content.strip()
-        
-        import json
-        data = json.loads(content)
-        
-        # PERSISTENCE: Only update if value is not null and we don't already have it (or if it's changing)
-        if data.get("name") and not user_info.get("name"): 
-            user_info["name"] = data["name"]
-        if data.get("car_number"):
-            user_info["car_number"] = data["car_number"]
-        if data.get("start_time"):
-            user_info["start_time"] = data["start_time"]
-        if data.get("end_time"):
-            user_info["end_time"] = data["end_time"]
+        chain = extraction_prompt | llm
+        try:
+            extraction_response = chain.invoke({"input": last_msg_content})
+            content = extraction_response.content.strip()
             
-    except Exception as e:
-        print(f"Extraction error: {e}")
+            # Remove markdown code blocks if present
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.endswith("```"):
+                content = content[:-3]
+            content = content.strip()
+            
+            import json
+            data = json.loads(content)
+            
+            if data.get("name"):
+                user_info["name"] = data["name"]
+            if data.get("car_number"):
+                user_info["car_number"] = data["car_number"]
+                
+        except Exception as e:
+            print(f"Extraction error: {e}")
 
     # 2. Check what's missing
     missing = []
     if not user_info.get("name"): missing.append("name")
     if not user_info.get("car_number"): missing.append("car number")
-    if not user_info.get("start_time"): missing.append("reservation time")
     
     if missing:
         return {
             "messages": [AIMessage(content=f"Please provide your {' and '.join(missing)} to proceed with reservation.")],
-            "user_info": user_info,
-            "dialog_stage": "reservation" # Set stage to stay in flow
+            "user_info": user_info
         }
         
     # If we have both
     # Create reservation (Mock)
-    # Pass start/end. If end is missing, pass empty string or "N/A"
-    start_t = user_info.get("start_time", "N/A")
-    end_t = user_info.get("end_time", "")
+    # status will be returned as message e.g. "Reservation request received..."
+    res_msg = create_reservation(user_info["name"], user_info["car_number"], "Now", "Later")
     
-    res_msg = create_reservation(user_info["name"], user_info["car_number"], start_t, end_t)
-    
-    time_display = f"{start_t}"
-    if end_t:
-        time_display += f" - {end_t}"
-        
     return {
-        "messages": [AIMessage(content=f"Request submitted for {user_info['name']} (Plate: {user_info['car_number']}, Time: {time_display}).\n{res_msg}")],
+        "messages": [AIMessage(content=f"Request submitted for {user_info['name']} (Plate: {user_info['car_number']}).\n{res_msg}")],
         "user_info": user_info,
-        "reservation_details": {"status": "pending"},
-        "dialog_stage": "general" # Reset stage after submitting request
+        "reservation_details": {"status": "pending"}
     }
 
 def check_status_node(state: AgentState):

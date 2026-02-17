@@ -31,15 +31,17 @@ class TestStage2Integration(unittest.TestCase):
         result = app.invoke(state)
         
         # 2. User provides details
-        print("[User] My name is Bob and plate is XYZ-999.")
+        print("[User] My name is Bob, plate is XYZ-999, and I want to book for 2 hours.")
         state = result
-        state["messages"].append(HumanMessage(content="My name is Bob and plate is XYZ-999."))
+        state["messages"].append(HumanMessage(content="My name is Bob, plate is XYZ-999, and I want to book for 2 hours."))
         result = app.invoke(state)
         last_msg = result["messages"][-1].content
         print(f"[Bot] {last_msg}")
         
-        # Verify Pending
+        # Verify Pending and Time capture in message
         self.assertIn("Waiting for admin approval", last_msg)
+        # We expect "2 hours" to be in the message
+        self.assertIn("2 hours", last_msg)
         status = get_reservation_status("Bob", "XYZ-999")
         self.assertEqual(status, "pending")
         print("[System] Status is PENDING.")

@@ -5,8 +5,6 @@ from langchain_core.messages import BaseMessage
 class UserInfo(TypedDict):
     name: Optional[str]
     car_number: Optional[str]
-    start_time: Optional[str]
-    end_time: Optional[str]
 
 class AgentState(TypedDict):
     messages: Annotated[List[BaseMessage], add_messages]

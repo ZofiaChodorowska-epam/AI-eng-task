@@ -83,21 +83,13 @@ def filter_sensitive_data(text: str) -> str:
                 if label == "license plate" and re.search(r'^\d{3}-\d{4}$', text_segment.strip()):
                     label = "phone number"
 
-                if label == "phone number":
-                    # Only redact if it actually contains digits
-                    if not re.search(r'\d', text_segment):
-                        continue
-                        
-                # 3. SKIP redaction for non-sensitive types per user request
+                # SKIP redaction for non-sensitive types per user request
                 # Names, Plates, and generic Locations (e.g. "New York") are visible.
                 # Specific "address" (e.g. "123 Main St") will still be redacted.
                 if label in ["person", "license plate", "location"]:
                     continue
                     
                 replacement = f"[{label.upper()} REDACTED]"
-                
-                # Apply replacement (be careful with offsets if multiple replaces happen, 
-                # but here we iterate sorted reverse so it's safe)
                 redacted_text = redacted_text[:start] + replacement + redacted_text[end:]
                 
             return redacted_text
