@@ -8,6 +8,7 @@ chromadb
 ragas
 datasets
 openai
+langchain-openai
 tiktoken
 python-dotenv
 greenlet
@@ -16,3 +17,5 @@ pandas
 gliner
 numpy<2.0.0
 transformers<4.41.0
+mcp
+fastmcp
