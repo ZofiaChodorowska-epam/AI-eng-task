@@ -7,20 +7,27 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 
-from models import AgentState
-from vector_store import get_vectorstore
-from sql_db import get_available_spots, get_working_hours, create_reservation, check_availability, get_reservation_status
+from src.models import AgentState
+from src.vector_store import get_vectorstore
+from src.sql_db import get_available_spots, get_working_hours, create_reservation, check_availability, get_reservation_status
 
 # Load environment variables if any
 from dotenv import load_dotenv
 load_dotenv()
 
 # Initialize LLM
-# In a real app we'd need an API key. I'll use a placeholder or fail gracefully if not present.
-# For now assuming OPENAI_API_KEY is set or we mock it.
-llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+key = os.getenv("OPENAI_API_KEY")
+llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0, api_key=key)
 
 # Tools / Helper Functions
+def get_message_text(message):
+    """Safely extract text from message content (handles both string and list)."""
+    if isinstance(message.content, str):
+        return message.content
+    elif isinstance(message.content, list):
+        return " ".join([part["text"] for part in message.content if isinstance(part, dict) and "text" in part])
+    return ""
+
 def retrieve_docs_list(query: str):
     vectorstore = get_vectorstore()
     retriever = vectorstore.as_retriever(search_kwargs={"k": 2})
@@ -37,7 +44,7 @@ def contextualize_query(state: AgentState):
     """
     messages = state["messages"]
     if len(messages) <= 1:
-        return messages[-1].content
+        return get_message_text(messages[-1])
         
     system_prompt = (
         "Given a chat history and the latest user question "
@@ -65,7 +72,7 @@ def analyze_intent(state: AgentState):
     """
     messages = state["messages"]
     last_message = messages[-1]
-    user_text = last_message.content.lower()
+    user_text = get_message_text(last_message).lower()
     
     # 1. Check for explicit exit from reservation
     if any(k in user_text for k in ["no", "cancel", "stop", "nevermind"]):
@@ -134,7 +141,7 @@ def conversation_node(state: AgentState):
     user_info = state.get("user_info", {})
     
     # Robust extraction for Name from general conversation
-    last_content = messages[-1].content
+    last_content = get_message_text(messages[-1])
     if not user_info.get("name"):
         extraction_prompt = ChatPromptTemplate.from_messages([
             ("system", "Extract the user's name if they introduced themselves. Return JUST the name or 'null'."),
@@ -196,7 +203,7 @@ def reservation_node(state: AgentState):
     user_info = state.get("user_info", {})
     
     # 1. Try to extract info from the *latest* message if we are in reservation flow
-    last_msg_content = messages[-1].content
+    last_msg_content = get_message_text(messages[-1])
     
     # Only run extraction if we don't have everything yet
     # We want name, car_number, and a time/duration.
