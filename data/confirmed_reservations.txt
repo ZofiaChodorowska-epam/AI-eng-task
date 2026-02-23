@@ -1,0 +1,8 @@
+Test User | TEST-123 | 1 hour | 2026-02-17T12:42:06.693896
+zofia | g563 | Now to Later | 2026-02-17T12:44:22.464194
+zofia | gd4356 | tomorrow 8-16 (End: See Description) | 2026-02-17T12:55:53.798641
+Zofia | gd576 | tomorrow 8-16 (End: See Description) | 2026-02-17T13:24:32.198250
+Zofia | gd576 | tomorrow 8-16 (End: See Description) | 2026-02-17T13:25:35.297653
+TestUser | PLATE123 | 8 (End: 16) | 2026-02-17T13:39:50.937890
+TestUser | PLATE123 | 8 (End: 16) | 2026-02-17T13:40:00.805311
+zofia | gr6543 | tomorrow 8 (End: tomorrow 16) | 2026-02-17T13:42:11.393556

@@ -1,0 +1,11 @@
+{
+    "dependencies": [
+        "./requirements.txt",
+        "."
+    ],
+    "graphs": {
+        "parking_bot": "./src/chatbot_graph.py:app",
+        "admin_agent": "./src/admin_graph.py:app"
+    },
+    "env": ".env"
+}
