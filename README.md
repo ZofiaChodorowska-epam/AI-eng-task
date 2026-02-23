@@ -1,8 +1,6 @@
-<<<<<<< HEAD
+
 # AI-eng-task
 Final task for AI engineering Fast Track Course
-=======
-# Parking Chatbot - Stage 1
 
 ## Overview
 A RAG-based chatbot for parking management.
@@ -17,4 +15,3 @@ echo "OPENAI_API_KEY=your_key_here" > .env
 
 ## Usage
 Run `python main.py` to start the bot.
->>>>>>> master
