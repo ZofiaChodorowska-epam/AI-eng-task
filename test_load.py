@@ -43,6 +43,11 @@ async def test_concurrent_rag_queries(app_with_memory):
         "Are there any penalties for overtime?"
     ]
     
+    # Pre-initialize the local ChromaDB vectorstore once sequentially 
+    # to avoid a connection race condition in CI (SQLite locks).
+    from src.vector_store import get_vectorstore
+    get_vectorstore()
+    
     # Run 10 parallel queries
     tasks = [run_query(i, queries[i % len(queries)]) for i in range(10)]
     results = await asyncio.gather(*tasks)
