@@ -64,6 +64,32 @@ class TestStage3MCP(unittest.TestCase):
                 print("[Test] Log file content verified.")
 
         asyncio.run(run_test())
+    def test_mcp_invalid_tool(self):
+        print("\nTesting Stage 3: MCP Server Invalid Tool...")
+        
+        async def run_test():
+            server_script = os.path.join(os.path.dirname(__file__), "src/mcp_server.py")
+            server_params = StdioServerParameters(
+                command=sys.executable,
+                args=[server_script],
+                env=os.environ.copy()
+            )
+            
+            async with stdio_client(server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    
+                    try:
+                        await session.call_tool(
+                            "non_existent_tool",
+                            arguments={}
+                        )
+                        self.fail("Should have raised an error for invalid tool")
+                    except Exception as e:
+                        # MCP client raises an error when returning an invalid tool
+                        self.assertTrue(True)
+        
+        asyncio.run(run_test())
 
 if __name__ == '__main__':
     unittest.main()

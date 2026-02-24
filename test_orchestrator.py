@@ -79,3 +79,51 @@ async def test_full_orchestrator_flow():
     # Final state should have action cleared and current_reservation cleared due to process_admin_action_node logic
     assert result.get("action") is None
     assert result.get("current_reservation") is None
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_rejection_flow():
+    """
+    Test the flow where the Admin rejects a reservation.
+    """
+    from langgraph.checkpoint.memory import MemorySaver
+    memory = MemorySaver()
+    app_with_memory = builder.compile(checkpointer=memory, interrupt_before=["admin_human_approval_node"])
+    
+    config = {"configurable": {"thread_id": "test_orchestrator_reject"}}
+    
+    state = {
+        "messages": [HumanMessage(content="Hi, I am Tester2 with car TST999. Reserve a spot for 15:00 to 17:00")],
+        "user_info": {},
+        "dialog_stage": "general",
+        "reservation_details": {},
+        "pending_reservations": [],
+        "current_reservation": None,
+        "action": None
+    }
+    
+    result = await app_with_memory.ainvoke(state, config)
+    
+    # Ensure it's interrupted
+    assert result.get("current_reservation") is not None
+    assert result["current_reservation"]["name"] == "Tester2"
+    
+    # Verify in DB as pending
+    conn = get_db_connection()
+    res = conn.execute("SELECT * FROM reservations WHERE name='Tester2'").fetchone()
+    conn.close()
+    assert dict(res)["status"] == "pending"
+    
+    # Admin rejects
+    await app_with_memory.aupdate_state(config, {"action": "reject"})
+    result = await app_with_memory.ainvoke(None, config)
+    
+    # Verify status changed to rejected
+    conn = get_db_connection()
+    res = conn.execute("SELECT * FROM reservations WHERE name='Tester2'").fetchone()
+    conn.close()
+    assert dict(res)["status"] == "rejected"
+    
+    # Final state should be cleared
+    assert result.get("action") is None
+    assert result.get("current_reservation") is None

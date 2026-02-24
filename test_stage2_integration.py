@@ -72,5 +72,21 @@ class TestStage2Integration(unittest.TestCase):
         self.assertIn("CONFIRMED", last_msg)
         print("[System] Verification Successful!")
 
+    def test_missing_info_prompt(self):
+        print("\nTesting Stage 2: Missing Info Prompt...")
+        
+        # User provides partial info
+        state = {
+            "messages": [HumanMessage(content="I want to book a spot for my car plate XYZ-999.")],
+            "user_info": {},
+            "reservation_details": {}
+        }
+        result = app.invoke(state)
+        last_msg = result["messages"][-1].content
+        
+        # Verify bot asks for missing info (name and time)
+        self.assertIn("name", last_msg.lower())
+        self.assertIn("time", last_msg.lower())
+
 if __name__ == '__main__':
     unittest.main()

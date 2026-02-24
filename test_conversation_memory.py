@@ -34,5 +34,34 @@ class TestConversationMemory(unittest.TestCase):
         # Verify response contains name
         self.assertIn("Zofia", last_msg, "Bot should remember the name")
 
+    def test_car_plate_memory(self):
+        print("\nTesting Car Plate Memory...")
+        
+        # 1. User provides car plate explicitly in a booking context
+        state = {
+            "messages": [HumanMessage(content="I need to park. My car plate is TST999.")],
+            "user_info": {}
+        }
+        result = app.invoke(state)
+        
+        # Verify extraction
+        self.assertEqual(result["user_info"].get("car_number"), "TST999", "Car plate should be extracted")
+        
+        # 2. Cancel the reservation flow so we can talk normally
+        state = result
+        state["messages"].append(HumanMessage(content="cancel"))
+        result = app.invoke(state)
+        
+        # 3. User asks for their plate with a conversational greeting to force routing
+        state = result
+        state["messages"].append(HumanMessage(content="Hello, what is my car plate?"))
+        
+        result = app.invoke(state)
+        last_msg = result["messages"][-1].content
+        print(f"Bot: {last_msg}")
+        
+        # Verify response
+        self.assertIn("TST999", last_msg, "Bot should remember the car plate")
+
 if __name__ == '__main__':
     unittest.main()
