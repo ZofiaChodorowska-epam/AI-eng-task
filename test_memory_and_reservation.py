@@ -54,9 +54,9 @@ class TestMemoryAndReservation(unittest.TestCase):
         self.assertIn("provide your name", last_msg.lower())
         
         # 2. User provides details
-        print("User: My name is Alice and plate is ABC-123.")
+        print("User: My name is Alice, plate is ABC-123, time is 10:00 to 12:00.")
         state = result
-        state["messages"].append(HumanMessage(content="My name is Alice and plate is ABC-123."))
+        state["messages"].append(HumanMessage(content="My name is Alice, plate is ABC-123, time is 10:00 to 12:00."))
         
         result = app.invoke(state)
         last_msg = result["messages"][-1].content
@@ -65,7 +65,8 @@ class TestMemoryAndReservation(unittest.TestCase):
         # Verify extraction
         self.assertEqual(result["user_info"]["name"], "Alice")
         self.assertEqual(result["user_info"]["car_number"], "ABC-123")
-        self.assertIn("confirmed", last_msg.lower())
+        # In Stage 4, reservations are pending admin approval first.
+        self.assertTrue(any(word in last_msg.lower() for word in ["wait", "admin", "pending", "request", "received"]), "Should mention waiting or received")
         
         # Verify DB
         conn = get_db_connection()
@@ -73,7 +74,8 @@ class TestMemoryAndReservation(unittest.TestCase):
         conn.close()
         self.assertIsNotNone(row)
         self.assertEqual(row["car_number"], "ABC-123")
-        print("DB Record found!")
+        self.assertEqual(row["status"], "pending")
+        print("DB Record found as pending!")
 
 if __name__ == '__main__':
     unittest.main()

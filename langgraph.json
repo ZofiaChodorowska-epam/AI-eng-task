@@ -5,7 +5,8 @@
     ],
     "graphs": {
         "parking_bot": "./src/chatbot_graph.py:app",
-        "admin_agent": "./src/admin_graph.py:app"
+        "admin_agent": "./src/admin_graph.py:app",
+        "orchestrator": "./src/orchestrator_graph.py:app"
     },
     "env": ".env"
 }
