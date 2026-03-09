@@ -46,12 +46,31 @@ class TestMemoryAndReservation(unittest.TestCase):
         state = {
             "messages": [HumanMessage(content="I want to book a spot.")],
             "user_info": {},
+            "dialog_stage": "general",
             "reservation_details": {}
         }
         result = app.invoke(state)
         last_msg = result["messages"][-1].content
         print(f"Bot: {last_msg}")
         self.assertIn("provide your name", last_msg.lower())
+        
+        import threading
+        import time
+        from sql_db import update_reservation_status
+        def admin_approve():
+            time.sleep(2)
+            conn = get_db_connection()
+            res = None
+            for _ in range(10):
+                res = conn.execute("SELECT id FROM reservations WHERE name='Alice'").fetchone()
+                if res:
+                    break
+                time.sleep(0.5)
+            if res:
+                update_reservation_status(res[0], "confirmed")
+            conn.close()
+            
+        threading.Thread(target=admin_approve).start()
         
         # 2. User provides details
         print("User: My name is Alice, plate is ABC-123, time is 10:00 to 12:00.")
@@ -65,8 +84,9 @@ class TestMemoryAndReservation(unittest.TestCase):
         # Verify extraction
         self.assertEqual(result["user_info"]["name"], "Alice")
         self.assertEqual(result["user_info"]["car_number"], "ABC-123")
-        # In Stage 4, reservations are pending admin approval first.
-        self.assertTrue(any(word in last_msg.lower() for word in ["wait", "admin", "pending", "request", "received"]), "Should mention waiting or received")
+        # In Stage 4, reservations are pending admin approval first, then confirmed.
+        self.assertTrue(any(word in last_msg.lower() for word in ["wait", "admin", "pending", "request", "received", "confirmed"]), "Should mention waiting, received or confirmed")
+        self.assertIn("CONFIRMED", last_msg)
         
         # Verify DB
         conn = get_db_connection()
@@ -74,8 +94,8 @@ class TestMemoryAndReservation(unittest.TestCase):
         conn.close()
         self.assertIsNotNone(row)
         self.assertEqual(row["car_number"], "ABC-123")
-        self.assertEqual(row["status"], "pending")
-        print("DB Record found as pending!")
+        self.assertEqual(row["status"], "confirmed")
+        print("DB Record found as confirmed!")
 
 if __name__ == '__main__':
     unittest.main()
