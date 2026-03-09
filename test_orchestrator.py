@@ -1,129 +1,95 @@
 import pytest
+import time
+import threading
 from langchain_core.messages import HumanMessage
-from src.orchestrator_graph import builder
-from src.sql_db import init_db, get_db_connection
-import asyncio
+from src.chatbot_graph import app
+from src.sql_db import init_db, get_db_connection, update_reservation_status
 
 @pytest.fixture(autouse=True)
 def setup_db():
     init_db() # resets the database
 
 @pytest.mark.asyncio
-async def test_full_orchestrator_flow():
+async def test_full_chatbot_approval_flow():
     """
     Test the complete flow:
-    1. User asks for availability.
-    2. User requests a reservation.
-    3. Orchestrator interrupts for Admin approval.
-    4. Admin approves, reservation is confirmed.
+    1. User requests a reservation.
+    2. Admin approves in background thread.
+    3. Chatbot returns confirmation.
     """
-    from langgraph.checkpoint.memory import MemorySaver
-    memory = MemorySaver()
-    app_with_memory = builder.compile(checkpointer=memory, interrupt_before=["admin_human_approval_node"])
-    
-    config = {"configurable": {"thread_id": "test_orchestrator_1"}}
-    
     state = {
         "messages": [HumanMessage(content="Hi, I am Tester with car TST123. Reserve a spot for 10:00 to 12:00")],
         "user_info": {},
         "dialog_stage": "general",
-        "reservation_details": {},
-        "pending_reservations": [],
-        "current_reservation": None,
-        "action": None
+        "reservation_details": {}
     }
     
-    result = await app_with_memory.ainvoke(state, config)
+    def admin_approve():
+        time.sleep(2)
+        conn = get_db_connection()
+        res = None
+        for _ in range(10):
+            res = conn.execute("SELECT id FROM reservations WHERE name='Tester'").fetchone()
+            if res:
+                break
+            time.sleep(0.5)
+        if res:
+            update_reservation_status(res[0], "confirmed")
+        conn.close()
+        
+    threading.Thread(target=admin_approve).start()
     
-    # 1. State should be paused at the admin check if the reservation was created.
-    # The chatbot might need two turns? Let's check status.
-    assert "messages" in result
+    # This invokes the graph which will block until the background thread approves the reservation
+    result = await app.ainvoke(state)
     
     bot_msg = result["messages"][-1].content.lower()
-    print("Bot says:", bot_msg)
     
-    # It might ask to confirm "start_time" or it created the reservation.
-    # If it created the reservation, current_reservation should be set.
-    # If not, let's provide missing info
-    if not result.get("current_reservation"):
-        # Let's see if we need another turn.
-        state = result
-        state["messages"].append(HumanMessage(content="My name is Tester, car TST123, time 10:00 to 12:00"))
-        result = await app_with_memory.ainvoke(state, config)
-
-    # Now it should be interrupted
-    assert result.get("current_reservation") is not None
-    assert result["current_reservation"]["name"] == "Tester"
+    # Final response must indicate confirmed status
+    assert "confirmed" in bot_msg
     
-    # Ensure it's in DB as pending
-    conn = get_db_connection()
-    res = conn.execute("SELECT * FROM reservations WHERE name='Tester'").fetchone()
-    conn.close()
-    assert dict(res)["status"] == "pending"
-    
-    from langgraph.types import Command
-    
-    # 2. Admin approves
-    # Update the graph state directly using the checkpoint configuration
-    await app_with_memory.aupdate_state(config, {"action": "approve"})
-    
-    # Resume graph execution (pass None since we just updated the state)
-    result = await app_with_memory.ainvoke(None, config)
-    
-    # 3. Verify status changed to confirmed
+    # Ensure it's in DB as confirmed
     conn = get_db_connection()
     res = conn.execute("SELECT * FROM reservations WHERE name='Tester'").fetchone()
     conn.close()
     assert dict(res)["status"] == "confirmed"
-    
-    # Final state should have action cleared and current_reservation cleared due to process_admin_action_node logic
-    assert result.get("action") is None
-    assert result.get("current_reservation") is None
-
 
 @pytest.mark.asyncio
-async def test_orchestrator_rejection_flow():
+async def test_chatbot_rejection_flow():
     """
-    Test the flow where the Admin rejects a reservation.
+    Test the flow where the Admin rejects a reservation in the background thread.
     """
-    from langgraph.checkpoint.memory import MemorySaver
-    memory = MemorySaver()
-    app_with_memory = builder.compile(checkpointer=memory, interrupt_before=["admin_human_approval_node"])
-    
-    config = {"configurable": {"thread_id": "test_orchestrator_reject"}}
-    
     state = {
         "messages": [HumanMessage(content="Hi, I am Tester2 with car TST999. Reserve a spot for 15:00 to 17:00")],
         "user_info": {},
         "dialog_stage": "general",
-        "reservation_details": {},
-        "pending_reservations": [],
-        "current_reservation": None,
-        "action": None
+        "reservation_details": {}
     }
     
-    result = await app_with_memory.ainvoke(state, config)
+    def admin_reject():
+        time.sleep(2)
+        conn = get_db_connection()
+        res = None
+        for _ in range(10):
+            res = conn.execute("SELECT id FROM reservations WHERE name='Tester2'").fetchone()
+            if res:
+                break
+            time.sleep(0.5)
+        if res:
+            update_reservation_status(res[0], "rejected")
+        conn.close()
+        
+    threading.Thread(target=admin_reject).start()
     
-    # Ensure it's interrupted
-    assert result.get("current_reservation") is not None
-    assert result["current_reservation"]["name"] == "Tester2"
+    # Invokes graph and blocks until rejection happens
+    result = await app.ainvoke(state)
     
-    # Verify in DB as pending
-    conn = get_db_connection()
-    res = conn.execute("SELECT * FROM reservations WHERE name='Tester2'").fetchone()
-    conn.close()
-    assert dict(res)["status"] == "pending"
+    bot_msg = result["messages"][-1].content.lower()
     
-    # Admin rejects
-    await app_with_memory.aupdate_state(config, {"action": "reject"})
-    result = await app_with_memory.ainvoke(None, config)
+    assert "rejected" in bot_msg
     
     # Verify status changed to rejected
     conn = get_db_connection()
     res = conn.execute("SELECT * FROM reservations WHERE name='Tester2'").fetchone()
     conn.close()
     assert dict(res)["status"] == "rejected"
-    
-    # Final state should be cleared
-    assert result.get("action") is None
-    assert result.get("current_reservation") is None
+

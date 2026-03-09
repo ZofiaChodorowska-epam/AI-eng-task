@@ -30,46 +30,40 @@ class TestStage2Integration(unittest.TestCase):
         }
         result = app.invoke(state)
         
+        import threading
+        def admin_approve():
+            time.sleep(2)  # Give the bot time to insert the reservation
+            print("[Admin] Approving reservation...")
+            conn = get_db_connection()
+            res = None
+            for _ in range(10):
+                res = conn.execute("SELECT id FROM reservations WHERE name='Bob'").fetchone()
+                if res:
+                    break
+                time.sleep(0.5)
+            if res:
+                update_reservation_status(res[0], "confirmed")
+            conn.close()
+            
+        threading.Thread(target=admin_approve).start()
+        
         # 2. User provides details
         print("[User] My name is Bob, plate is XYZ-999, and I want to book from 10:00 to 12:00.")
         state = result
         state["messages"].append(HumanMessage(content="My name is Bob, plate is XYZ-999, and I want to book from 10:00 to 12:00."))
+        
+        # This will block until the background thread approves the reservation
         result = app.invoke(state)
         last_msg = result["messages"][-1].content
         print(f"[Bot] {last_msg}")
         
         # Verify Pending and Time capture in message
-        self.assertTrue(any(word in last_msg.lower() for word in ["wait", "admin", "pending", "request", "received"]), "Should mention waiting or received")
-        status = get_reservation_status("Bob", "XYZ-999")
-        self.assertEqual(status, "pending")
-        print("[System] Status is PENDING.")
+        self.assertTrue(any(word in last_msg.lower() for word in ["wait", "admin", "pending", "request", "received", "confirmed"]), "Should mention waiting, received, or confirmed")
         
-        # 3. User checks status (Before Approval)
-        print("[User] Is my reservation approved?")
-        state = result
-        state["messages"].append(HumanMessage(content="Is my reservation approved?"))
-        result = app.invoke(state)
-        last_msg = result["messages"][-1].content
-        print(f"[Bot] {last_msg}")
-        self.assertIn("PENDING", last_msg)
-        
-        # 4. Admin Approves (Simulated)
-        print("[Admin] Approving reservation...")
-        # Get ID
-        conn = get_db_connection()
-        res_id = conn.execute("SELECT id FROM reservations WHERE name='Bob'").fetchone()[0]
-        conn.close()
-        update_reservation_status(res_id, "confirmed")
-        
-        # 5. User checks status (After Approval)
-        print("[User] Check status again.")
-        # Clear messages to avoid context window issues in test, or just append
-        # Let's just create a new message intent to be safe on router
-        state["messages"].append(HumanMessage(content="Check my reservation status."))
-        result = app.invoke(state)
-        last_msg = result["messages"][-1].content
-        print(f"[Bot] {last_msg}")
+        # Verify final status logic is communicated in the response
         self.assertIn("CONFIRMED", last_msg)
+        status = get_reservation_status("Bob", "XYZ-999")
+        self.assertEqual(status, "confirmed")
         print("[System] Verification Successful!")
 
     def test_missing_info_prompt(self):

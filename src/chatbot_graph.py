@@ -268,14 +268,27 @@ def reservation_node(state: AgentState):
     
     res_msg = create_reservation(user_info["name"], user_info["car_number"], start_t, end_t)
     
+    # Poll for admin decision
+    import time
+    while True:
+        status = get_reservation_status(user_info["name"], user_info["car_number"])
+        if status and status != "pending":
+            break
+        time.sleep(2)
+        
+    if status == "confirmed":
+        final_msg = f"Good news! Your reservation has been CONFIRMED."
+    else:
+        final_msg = f"Sorry, your reservation was REJECTED by the administrator."
+    
     time_display = f"{start_t}"
     if end_t:
         time_display += f" - {end_t}"
         
     return {
-        "messages": [AIMessage(content=f"Request submitted for {user_info['name']} (Plate: {user_info['car_number']}, Time: {time_display}).\n{res_msg}")],
+        "messages": [AIMessage(content=f"Request submitted for {user_info['name']} (Plate: {user_info['car_number']}, Time: {time_display}).\n{res_msg}\n\nUpdate: {final_msg}")],
         "user_info": user_info,
-        "reservation_details": {"status": "pending"},
+        "reservation_details": {"status": status},
         "dialog_stage": "general" # Reset stage after submitting request
     }
 
