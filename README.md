@@ -1,46 +1,48 @@
-# Parking Chatbot Orchestrator - Stage 4
+# Parking Chatbot - Stage 1
 Final task for AI engineering Fast Track Course
 
 ## 🏗 System Architecture
 
-This project is a multi-agent system built entirely on **LangGraph**. It replaces traditional linear scripting with a stateful graph where nodes are autonomous agents, human approvals, or API interactions.
+This project is a stateful chatbot system built on **LangGraph**. It replaces traditional linear scripting with a stateful graph where nodes act as functional agents to handle parking availability queries, conversational engagement, and reservation slot-filling.
 
-The primary system relies on the `OrchestratorGraph` which maintains the global state (`OrchestratorState`). 
+The primary system logic relies on the `chatbot_graph` which maintains the global state (`AgentState`). 
 
 ### Architecture Flow
 
 ```mermaid
 graph TD
-    chatbot_node[START] --> check_for_admin_escalation
-    check_for_admin_escalation -- Pending Reservation --> admin_human_approval_node
-    check_for_admin_escalation -- No Reservations --> END
+    user_input[User Input] --> router_node
     
-    admin_human_approval_node -- Interrupted --> process_admin_action_node
-    process_admin_action_node --> END
+    router_node -- "Conversation / Greeting" --> conversation_node
+    router_node -- "Ask about Hours/Rules" --> rag_node
+    router_node -- "Check Availability/Price" --> dynamic_info_node
+    router_node -- "Make Reservation" --> reservation_node
+    router_node -- "Check Status" --> check_status_node
+    
+    conversation_node --> END
+    rag_node --> END
+    dynamic_info_node --> END
+    reservation_node --> END
+    check_status_node --> END
 ```
 
 1. **User Input** → Receives chat messages.
-2. **Chatbot Node** → RAG LLM analyzes intent. If the user wants to book, it extracts constraints (Name, Plate, Time) and logs it as `pending` in SQLite.
-3. **Escalation Router** → The graph checks the SQLite database for pending reservations.
-4. **Admin Approval Node (Interrupt)** → If a pending reservation is found, the system *pauses execution* (`interrupt_before`), waiting for an Admin to provide an `approve/reject` state update.
-5. **Action Node** → Processes the human decision. If approved, confirming the reservation in SQLite and routing the payload to the MCP Node.
-6. **MCP Logging Server** → Uses the Model Context Protocol (FastMCP) to log the approved reservation asynchronously.
+2. **Intent Routing (`router_node`)** → Analyzes the text utilizing a hybrid approach (keyword heuristics + LLM classification) to determine the user's goal.
+3. **Execution Nodes**:
+   - **RAG Node** → Contextualizes the query based on conversation history and retrieves static rules/facts from a Vector Store.
+   - **Dynamic Info Node** → Bypasses the LLM entirely, querying the SQLite DB directly for real-time pricing and slot availability.
+   - **Reservation Node** → Uses structured LLM extraction to slot-fill constraints (Name, Plate, Time). Keeps asking the user until all fields are provided, then logs the request in SQLite.
+   - **Conversation Node** → Handles casual small talk and heuristically extracts the user's name.
+   - **Check Status Node** → Queries the SQLite database to return the approval status of a user's reservation.
 
 ## 🤖 Agent & Server Logic
 
-### 1. Chatbot Graph (`src/chatbot_graph.py`)
-This is the front-line agent.
-* **Logic**: Uses a secondary LangGraph subgraph. It routes incoming queries to a Retrieval-Augmented Generation (RAG) tool if the user asks for rules/pricing, or to a booking tool if they want a spot.
-* **Output**: Updates the global state with `reservation_details` or `retrieved_docs`.
+## 🤖 Agent Logic
 
-### 2. Admin & Escalation Logic (`src/orchestrator_graph.py`)
-The orchestrator acts as the "manager" of the agents.
-* **Logic**: After the chatbot finishes its turn, the orchestrator triggers `check_for_admin_escalation`. It queries the local SQLite DB for unapproved reservations.
-* **Human-in-the-Loop**: By compiling the graph with `interrupt_before=["admin_human_approval_node"]`, LangGraph natively yields execution back to the caller (Terminal or Studio) until explicitly resumed with a payload (`action: 'approve'`).
-
-### 3. MCP Server (`src/mcp_server.py`)
-A fast, standardized interface for agent tooling.
-* **Logic**: It runs a standalone `FastMCP` server exposing a `log_reservation` context tool. When the Orchestrator confirms a reservation, it connects to this server over `stdio` streams to document the confirmation securely, separating logging logic from core graph state.
+### Chatbot Graph (`src/chatbot_graph.py`)
+This is the front-line agent and the core of the application.
+* **Logic**: It routes incoming queries to a Retrieval-Augmented Generation (RAG) tool if the user asks for rules/pricing, or to a booking tool if they want a spot. It inherently maintains conversation memory and lock-in states (like ensuring a reservation is fully filled out before proceeding).
+* **Output**: Updates the global `AgentState` with conversational messages, `user_info` extraction, and `reservation_details`.
 
 ---
 
@@ -71,15 +73,15 @@ A fast, standardized interface for agent tooling.
 
 ### 💻 Running Locally (CLI Deployment)
 
-For local testing, the interactive CLI can be used. `main.py` is configured to simulate the entire system, handling both User interactions and Admin interrupts in the same terminal.
+For local testing, the interactive CLI can be used. It connects safely to the compiled LangGraph and includes intermediate PII redaction guardrails.
 
 ```bash
 python main.py
 ```
 
 1. Type a reservation request: `"Book a spot for Alice, car ABC, 10:00 to 12:00"`
-2. The CLI will detect the LangGraph pause and display a prompt: `[ADMIN ALERT] Approve this reservation? (y/n/skip):`
-3. Type `y`. The graph will resume, modify the database, log via MCP, and output the final bot response.
+2. The bot will process your request or ask follow-up questions if data is missing.
+3. Chat naturally - the state memory will recall your name and car plate throughout the session.
 
 ### 🌐 Deploying with LangGraph Studio
 
@@ -90,18 +92,15 @@ To run the system in a production-ready visual environment:
    langgraph dev
    ```
 2. Open the provided Localhost Web URL.
-3. Select `orchestrator` in the bottom-left dropdown.
-4. Chat with the bot. When a reservation is made, the execution trace will pause.
-5. **To Approve**: Look at the right-hand **State** panel. Change the `action` field from `null` to `approve`.
-6. Click the **Resume arrow** at the bottom of the screen.
+3. Select `app` (from `src/chatbot_graph.py`) in the bottom-left dropdown.
+4. Chat with the bot and view the state execution trace visually.
 
 ### 🧪 Testing & CI/CD
-- Run the full async integration suite locally:
+- Run the evaluation suite locally to test metrics like Answer Accuracy and Retrieval Recall:
   ```bash
-  pytest -v
+  python evaluate.py
   ```
-- **Load Testing**: Load validation via `test_load.py` is utilized to ensure high-concurrency memory checkpointer integrity under stress.
-- **CI Pipeline**: A GitHub Action (`.github/workflows/test.yml`) protects the `main` branch by automatically running the test module.
+- **Guardrail Testing**: Ensure PII is redacted properly using `test_guardrails.py`.
 
 ---
 ## Generated Presentation
