@@ -2,7 +2,7 @@ import os
 from typing import TypedDict, Optional, List
 from langgraph.graph import StateGraph, END
 from src.sql_db import get_pending_reservations, update_reservation_status
-from src.admin_agent import log_reservation_via_mcp
+from src.admin_agent import process_admin_action
 import asyncio
 
 class AdminState(TypedDict):
@@ -41,17 +41,9 @@ async def process_result(state: AdminState):
     if not res or not action:
         return {"message": "No action taken."}
     
-    if action == 'approve':
-        update_reservation_status(res['id'], 'confirmed')
-        print(f"[AdminGraph] Reservation {res['id']} CONFIRMED.")
-        await log_reservation_via_mcp(res)
-        return {"message": f"Approved and logged {res['name']}.", "current_reservation": None, "action": None}
-    elif action == 'reject':
-        update_reservation_status(res['id'], 'rejected')
-        print(f"[AdminGraph] Reservation {res['id']} REJECTED.")
-        return {"message": f"Rejected {res['name']}.", "current_reservation": None, "action": None}
-    elif action == 'skip':
-        return {"message": f"Skipped {res['name']}.", "current_reservation": None, "action": None}
+    if action in ['approve', 'reject', 'skip']:
+        msg = await process_admin_action(res, action)
+        return {"message": msg, "current_reservation": None, "action": None}
     
     return state
 

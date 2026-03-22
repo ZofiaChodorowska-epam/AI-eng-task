@@ -1,5 +1,26 @@
 [
     {
+        "question": "What are the rules for disabled parking?",
+        "expected_keywords": [
+            "free",
+            "three hours",
+            "permit"
+        ]
+    },
+    {
+        "question": "Do I have to pay if I have an electric car?",
+        "expected_keywords": [
+            "charging",
+            "stations"
+        ]
+    },
+    {
+        "question": "Where is the parking located?",
+        "expected_keywords": [
+            "123 main street"
+        ]
+    },
+    {
         "question": "What are the working hours?",
         "expected_keywords": [
             "06:00",
@@ -7,24 +28,42 @@
         ]
     },
     {
-        "question": "Where is the parking located?",
+        "question": "How much does it cost per hour?",
         "expected_keywords": [
-            "123 Main Street"
+            "5.0"
         ]
     },
     {
-        "question": "How much does it cost?",
+        "question": "Are there any spots available right now?",
         "expected_keywords": [
-            "5.0",
-            "price",
-            "5"
+            "currently there are",
+            "spots"
         ]
     },
     {
-        "question": "Is there support available?",
+        "question": "Hello, my name is John.",
         "expected_keywords": [
-            "555-0199",
-            "support@cityparking.com"
+            "hello",
+            "john"
+        ]
+    },
+    {
+        "question": "I would like to reserve a spot for John, car ABC, from 12 to 14.",
+        "expected_keywords": [
+            "request submitted for john",
+            "plate: abc"
+        ]
+    },
+    {
+        "question": "Check status of my reservation for John with plate ABC",
+        "expected_keywords": [
+            "reservation status is"
+        ]
+    },
+    {
+        "question": "Nevermind, cancel that.",
+        "expected_keywords": [
+            "cancel"
         ]
     }
 ]

@@ -24,6 +24,7 @@ def run_evaluation():
     correct_count = 0
     total_recall = 0
     total_precision = 0
+    rag_query_count = 0
 
     print(f"Starting evaluation on {len(dataset)} items...")
 
@@ -49,6 +50,11 @@ def run_evaluation():
         total_latency += latency
         
         bot_response = response["messages"][-1].content.lower()
+        
+        # We also need to run the bot response through guardrails to simulate real usage
+        from src.guardrails import filter_sensitive_data
+        bot_response = filter_sensitive_data(response["messages"][-1].content).lower()
+        
         retrieved_docs = response.get("retrieved_docs", [])
         
         # 1. Answer Accuracy (End-to-End)
@@ -56,24 +62,31 @@ def run_evaluation():
         if hit:
             correct_count += 1
             
-        # 2. Retrieval Recall (Did retrieved docs contain expected keywords?)
-        # Recall = (Keywords found in context) / (Total expected keywords)
-        keywords_in_context = 0
-        joined_context = " ".join(retrieved_docs).lower()
-        for k in expected_keywords:
-            if k.lower() in joined_context:
-                keywords_in_context += 1
-        recall = keywords_in_context / len(expected_keywords) if expected_keywords else 0
-        total_recall += recall
-        
-        # 3. Context Precision (What fraction of chunks were relevant?)
-        # Precision = (Chunks with at least 1 keyword) / (Total chunks)
-        relevant_chunks = 0
-        for doc in retrieved_docs:
-            if any(k.lower() in doc.lower() for k in expected_keywords):
-                relevant_chunks += 1
-        precision = relevant_chunks / len(retrieved_docs) if retrieved_docs else 0
-        total_precision += precision
+        # 2 & 3. Retrieval Recall & Context Precision
+        # Only calculate if the node actually utilized RAG (retrieved_docs exists)
+        if retrieved_docs:
+            # Recall = (Keywords found in context) / (Total expected keywords)
+            keywords_in_context = 0
+            joined_context = " ".join(retrieved_docs).lower()
+            for k in expected_keywords:
+                if k.lower() in joined_context:
+                    keywords_in_context += 1
+            recall = keywords_in_context / len(expected_keywords) if expected_keywords else 0
+            total_recall += recall
+            
+            # Precision = (Chunks with at least 1 keyword) / (Total chunks)
+            relevant_chunks = 0
+            for doc in retrieved_docs:
+                if any(k.lower() in doc.lower() for k in expected_keywords):
+                    relevant_chunks += 1
+            precision = relevant_chunks / len(retrieved_docs) if retrieved_docs else 0
+            total_precision += precision
+            
+            # Count the query as a RAG query for moving averages
+            rag_query_count += 1
+        else:
+            recall = None
+            precision = None
 
         results.append({
             "question": question,
@@ -86,8 +99,10 @@ def run_evaluation():
 
     avg_latency = total_latency / len(dataset) if dataset else 0
     accuracy = correct_count / len(dataset) if dataset else 0
-    avg_recall = total_recall / len(dataset) if dataset else 0
-    avg_precision = total_precision / len(dataset) if dataset else 0
+    
+    # Calculate RAG metrics only against queries that actually used RAG
+    avg_recall = total_recall / rag_query_count if rag_query_count > 0 else 0
+    avg_precision = total_precision / rag_query_count if rag_query_count > 0 else 0
     
     report = f"""
     Evaluation Report

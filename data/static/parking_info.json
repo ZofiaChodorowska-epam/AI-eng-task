@@ -14,5 +14,13 @@
   {
     "topic": "Contact",
     "content": "For support, call 555-0199 or email support@cityparking.com."
+  },
+  {
+    "topic": "Disabled Parking",
+    "content": "Disabled parking is completely free for up to three hours. A valid disabled permit must be clearly displayed on the dashboard."
+  },
+  {
+    "topic": "Electric Vehicles",
+    "content": "EVs park at the normal hourly rate, but the use of electric charging stations inside the facility is complimentary."
   }
 ]

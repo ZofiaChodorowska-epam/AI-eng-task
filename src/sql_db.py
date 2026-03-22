@@ -70,6 +70,15 @@ def update_reservation_status(reservation_id, status):
     conn = get_db_connection()
     c = conn.cursor()
     c.execute('UPDATE reservations SET status = ? WHERE id = ?', (status, reservation_id))
+    
+    # If the reservation is confirmed, mark one available spot as occupied
+    if status == 'confirmed':
+        c.execute('SELECT spot_number FROM spots WHERE is_occupied = 0 LIMIT 1')
+        row = c.fetchone()
+        if row:
+            spot_number = row['spot_number']
+            c.execute('UPDATE spots SET is_occupied = 1 WHERE spot_number = ?', (spot_number,))
+            
     conn.commit()
     conn.close()
     return True

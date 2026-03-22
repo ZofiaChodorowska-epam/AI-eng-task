@@ -34,10 +34,6 @@ def retrieve_docs_list(query: str):
     docs = retriever.invoke(query)
     return docs
 
-def retrieve_docs(query: str):
-    docs = retrieve_docs_list(query)
-    return "\n\n".join([d.page_content for d in docs])
-
 def contextualize_query(state: AgentState):
     """
     Rewrite the latest user question based on conversation history.
@@ -75,7 +71,7 @@ def analyze_intent(state: AgentState):
     user_text = get_message_text(last_message).lower()
     
     # 1. Check for explicit exit from reservation
-    if any(k in user_text for k in ["no", "cancel", "stop", "nevermind"]):
+    if any(k in user_text for k in ["cancel", "stop", "nevermind"]):
         return "conversation_flow"
 
     # 2. If we are in the middle of a reservation (using dialog_stage)
@@ -103,7 +99,7 @@ def analyze_intent(state: AgentState):
     except Exception:
         intent = "rag"
 
-    # 5. Keyword Overrides
+    # 5. Keyword Overrides as a failsafe against hallucinations
     if any(k in user_text for k in ["status", "approved", "confirmed", "how's my reservation"]):
         return "check_status"
         
@@ -327,9 +323,7 @@ workflow.set_conditional_entry_point(
         "dynamic_info": "dynamic_info_node",
         "reservation_flow": "reservation_node",
         "conversation_flow": "conversation_node",
-        "check_status": "check_status_node",
-         "general_info": "rag_node",
-         "other": "rag_node"
+        "check_status": "check_status_node"
     }
 )
 
