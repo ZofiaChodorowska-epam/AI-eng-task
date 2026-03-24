@@ -2,10 +2,10 @@
     Evaluation Report
     -----------------
     Total Queries: 10
-        Answer Accuracy: 0.60
-    Retrieval Recall: 0.67
-    Context Precision: 0.50
-    Average Latency: 30940.9831s
+        Answer Accuracy: 0.50
+    Retrieval Recall: 0.44
+    Context Precision: 0.33
+    Average Latency: 7.2376s
     
 
 Details:
@@ -16,15 +16,15 @@ Details:
     "hit": true,
     "recall": 0.3333333333333333,
     "precision": 0.5,
-    "latency": 6.933429956436157
+    "latency": 1.982097864151001
   },
   {
     "question": "Do I have to pay if I have an electric car?",
-    "response": "some parking facilities offer free or discounted parking for electric vehicles as an incentive to promote environmentally friendly transportation. it's always a good idea to check with the specific parking facility or look for signs indicating any special provisions for electric vehicles.",
+    "response": "yes, payment is expected upon exit regardless of the type of vehicle you have, including electric cars.",
     "hit": false,
-    "recall": null,
-    "precision": null,
-    "latency": 3.8940491676330566
+    "recall": 0.0,
+    "precision": 0.0,
+    "latency": 1.3565049171447754
   },
   {
     "question": "Where is the parking located?",
@@ -32,31 +32,31 @@ Details:
     "hit": false,
     "recall": 1.0,
     "precision": 0.5,
-    "latency": 4.600683927536011
+    "latency": 1.8881981372833252
   },
   {
     "question": "What are the working hours?",
-    "response": "working hours: 06:00 am - 12:00 am daily. price: $5.0/hour. currently there are 10 spots available.",
+    "response": "working hours: 06:00 am - 12:00 am daily. price: n/a. currently there are 0 spots available.",
     "hit": true,
     "recall": null,
     "precision": null,
-    "latency": 0.45429182052612305
+    "latency": 0.6589272022247314
   },
   {
     "question": "How much does it cost per hour?",
-    "response": "working hours: 06:00 am - 12:00 am daily. price: $5.0/hour. currently there are 10 spots available.",
-    "hit": true,
+    "response": "working hours: 06:00 am - 12:00 am daily. price: n/a. currently there are 0 spots available.",
+    "hit": false,
     "recall": null,
     "precision": null,
-    "latency": 1.1816489696502686
+    "latency": 0.4567890167236328
   },
   {
     "question": "Are there any spots available right now?",
-    "response": "working hours: 06:00 am - 12:00 am daily. price: $5.0/hour. currently there are 10 spots available.",
+    "response": "working hours: 06:00 am - 12:00 am daily. price: n/a. currently there are 0 spots available.",
     "hit": true,
     "recall": null,
     "precision": null,
-    "latency": 0.5081861019134521
+    "latency": 0.5223162174224854
   },
   {
     "question": "Hello, my name is John.",
@@ -64,15 +64,15 @@ Details:
     "hit": true,
     "recall": null,
     "precision": null,
-    "latency": 2.3470640182495117
+    "latency": 2.0654032230377197
   },
   {
     "question": "I would like to reserve a spot for John, car ABC, from 12 to 14.",
-    "response": "request submitted for john (plate: abc, time: 12 - 14).\nreservation request received. waiting for admin approval...\n\nupdate: good news! your reservation has been confirmed.",
+    "response": "request submitted for john (plate: abc, time: 12 - 14).\nreservation request received. waiting for admin approval...\n\nupdate: your reservation is currently pending admin approval.",
     "hit": true,
     "recall": null,
     "precision": null,
-    "latency": 309388.5057117939
+    "latency": 61.28744387626648
   },
   {
     "question": "Check status of my reservation for John with plate ABC",
@@ -80,14 +80,14 @@ Details:
     "hit": false,
     "recall": null,
     "precision": null,
-    "latency": 0.5650360584259033
+    "latency": 1.1077368259429932
   },
   {
     "question": "Nevermind, cancel that.",
-    "response": "no problem! let me know if you need any assistance with anything else.",
+    "response": "no problem! let me know if you need any further assistance.",
     "hit": false,
     "recall": null,
     "precision": null,
-    "latency": 0.8408501148223877
+    "latency": 1.050394058227539
   }
 ]

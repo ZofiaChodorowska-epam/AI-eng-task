@@ -68,7 +68,11 @@ builder.set_entry_point("fetch_pending")
 
 builder.add_conditional_edges(
     "fetch_pending",
-    lambda x: "human_approval" if x.get("current_reservation") else END
+    lambda x: "human_approval" if x.get("current_reservation") else END,
+    {
+        "human_approval": "human_approval",
+        END: END
+    }
 )
 
 builder.add_edge("human_approval", "process_result")

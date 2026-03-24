@@ -264,16 +264,21 @@ def reservation_node(state: AgentState):
     
     res_msg = create_reservation(user_info["name"], user_info["car_number"], start_t, end_t)
     
-    # Poll for admin decision
+    # Poll for admin decision (wait up to 60 seconds)
     import time
-    while True:
+    max_retries = 30
+    retries = 0
+    while retries < max_retries:
         status = get_reservation_status(user_info["name"], user_info["car_number"])
         if status and status != "pending":
             break
         time.sleep(2)
+        retries += 1
         
     if status == "confirmed":
         final_msg = f"Good news! Your reservation has been CONFIRMED."
+    elif status == "pending":
+        final_msg = f"Your reservation is currently PENDING admin approval."
     else:
         final_msg = f"Sorry, your reservation was REJECTED by the administrator."
     
